@@ -7,5 +7,6 @@
 
 module ButterFlyMatrixMPO
     using ITensors, ITensorCPD
+
     include("BFMatrixMPO.jl")
 end
