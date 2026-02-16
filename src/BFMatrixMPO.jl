@@ -25,15 +25,15 @@ struct BFMatrixMPO
     sliced_index_map
 
     function BFMatrixMPO(factors, levels, iMPOinds, jMPOinds, hyperindsi, hyperindsj, ranks)
-        bitsI = Dict(iMPOinds[2:end] .=> [1:length(iMPOinds) - 1...])
-        bitsJ = Dict(jMPOinds[end-1:-1:1] .=> [1:length(jMPOinds) - 1 ...])
+        bitsI = iMPOinds[2:end]
+        bitsJ = jMPOinds[end-1:-1:1]
 
         hyperind_sliced_factors = Vector{AbstractSlices}()
         sliced_index_map = Vector{Tuple}()
         for (i,j) in zip(factors, 1:length(factors))
             is = inds(i)
-            hyi = commoninds(is, keys(bitsI))
-            hyj = commoninds(is, keys(bitsJ))
+            hyi = commoninds(is, bitsI)
+            hyj = commoninds(is, bitsJ)
             indsposi = map(x->findfirst(is, x), hyi)
             indsposj = map(x->findfirst(is, x), hyj)
             cutinds_pos = Tuple(sort(vcat(indsposi, indsposj)))
@@ -104,6 +104,7 @@ ITensors.inds(bmpo::BFMatrixMPO) = [getproperty(bmpo, :iMPOinds)..., getproperty
 ITensors.ind(bmpo::BFMatrixMPO, i::Int) = inds(bmpo)[i]
 ITensors.itensor2inds(A::BFMatrixMPO)::Any = inds(A)
 Base.getindex(cp::BFMatrixMPO, i) = cp.factors[i]
+Base.eltype(bmpo::BFMatrixMPO) = eltype(getproperty(bmpo, :factors)[1].tensor)
 
 Base.length(bmpo::BFMatrixMPO) = length(bmpo.factors)
 
@@ -117,4 +118,19 @@ end
 
 function map_bitstring_to_block_index(levels, bitval; base=2)
     return digits(UInt64(bitval - 1); base, pad=levels) .+1
+end
+
+### This function tries to imagine the sliced array indices as tensor indices
+### of a block sparse tensor. then we just need to use the ranges to find the 
+### correct position.
+function to_tensor_element(v::Int, range::Tuple)
+    idx = zeros(Int, length(range))
+    for r in 1:length(range) - 1
+        ext = prod(range[r+1:end])
+        m = (v-1) ÷ ext
+        idx[r] = m
+        v -= m * ext
+    end
+    idx[end] = (v-1)
+    return idx
 end
