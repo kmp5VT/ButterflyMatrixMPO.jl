@@ -116,6 +116,5 @@ function reconstruct_butterfly(BM::BFMatrixMPO)
 end
 
 function map_bitstring_to_block_index(levels, bitval; base=2)
-    bs = digits(UInt64(bitval - 1); base, pad=levels) .+1
-    return bs
+    return digits(UInt64(bitval - 1); base, pad=levels) .+1
 end
