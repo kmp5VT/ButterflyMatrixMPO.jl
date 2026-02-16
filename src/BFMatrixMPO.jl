@@ -95,7 +95,7 @@ function RandomButteflyMatrixMPO(M::AbstractArray)
 
         factors[i] = f
     end
-    BMPO = ButterFlyMatrixMPO(factors, num_levels, iinds, jinds, hyperindsi, hyperindsj, ranks)
+    BMPO = BFMatrixMPO(factors, num_levels, iinds, jinds, hyperindsi, hyperindsj, ranks)
     return BMPO
 end
 
