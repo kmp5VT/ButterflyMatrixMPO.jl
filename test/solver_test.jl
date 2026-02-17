@@ -35,6 +35,8 @@ off_block_indices = Tuple(dim.(bits_off_factor))
 i_nohyp = BMPO.iMPOinds[1]
 j_nohyp = BMPO.jMPOinds[end]
 MIT = itensor(M, inds(BMPO))
+S1 = similar(BMPO[factor])
+S1sliced = eachslice(array(S1), dims=BMPO.sliced_index_map[factor])
 
 for i in 1:length(BMPO.hyperind_sliced_factors[factor])
     bits_for_solve = ButterFlyMatrixMPO.to_tensor_element(i, tensor_block_indices) .+ 1
@@ -43,6 +45,7 @@ for i in 1:length(BMPO.hyperind_sliced_factors[factor])
     MTtKRP = nothing
     gram_right = nothing
     gram_left = nothing
+    @show bits_for_solve
     for j in 1:prod(off_block_indices)
         bits_for_gram = ButterFlyMatrixMPO.to_tensor_element(j, off_block_indices) .+ 1
 
@@ -77,10 +80,12 @@ for i in 1:length(BMPO.hyperind_sliced_factors[factor])
         #     pos = map_bit_vals_to_list_position(BMPO, f1, label_to_bit)
         #     LHS_KRP *= itensor(BMPO.hyperind_sliced_factors[f1][pos], BMPO.block_index_map[f1])
         end
-        MTtKRP = isnothing(MTtKRP) ? dag(LHS_KRP) * Target_Block * dag(RHS_KRP) : MTtKRP + dag(LHS_KRP) * Target_Block * dag(RHS_KRP)
+        MTtKRP = isnothing(MTtKRP) ? 
+                dag(LHS_KRP) * Target_Block * dag(RHS_KRP) : 
+                MTtKRP + dag(LHS_KRP) * Target_Block * dag(RHS_KRP)
     end
-    @show  (array(gram_right) \ array(MTtKRP)')'
-    return
+    label_to_bit = Dict(bits_on_factor .=> bits_for_solve)
+    S1sliced[map_bit_vals_to_list_position(BMPO, factor, label_to_bit)] .= solve_ls_problem(MTtKRP, gram_left, gram_right)
 end
 
 function map_bit_vals_to_list_position(BMPO, factor, label_bit_map)
@@ -93,6 +98,18 @@ function map_bit_vals_to_list_position(BMPO, factor, label_bit_map)
     dim_list = dim.(block_tensor_indlist)
     return sum(map(x -> (block_ind_list[x] - 1) * prod(dim_list[1:x-1]), [1:length(block_ind_list)...])) + 1
     # , noncommoninds(inds(BMPO[factor]), block_tensor_indlist)
+end
+
+function solve_ls_problem(MTtKRP, gram_left::Nothing, gram_right)
+    return Array((cholesky(array(gram_right)) \ array(MTtKRP)')' )
+end
+
+function solve_ls_problem(MTtKRP, gram_left, gram_right::Nothing)
+
+end
+
+function solve_ls_problem(MTtKRP, gram_left, gram_right)
+
 end
 
 
