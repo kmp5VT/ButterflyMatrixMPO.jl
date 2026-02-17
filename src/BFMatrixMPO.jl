@@ -23,6 +23,7 @@ struct BFMatrixMPO
     ## This tells the tensor ordering of the slices array.
     ## for example i2, i3, j1 => (2,2,2) tensor so slices (1,2,1) = (1-1) * 4 + (2 - 1) * 2 + 1 = 3
     sliced_index_map
+    block_index_map
 
     function BFMatrixMPO(factors, levels, iMPOinds, jMPOinds, hyperindsi, hyperindsj, ranks)
         bitsI = iMPOinds[2:end]
@@ -30,6 +31,7 @@ struct BFMatrixMPO
 
         hyperind_sliced_factors = Vector{AbstractSlices}()
         sliced_index_map = Vector{Tuple}()
+        block_index_map = Vector{Vector{Index}}()
         for (i,j) in zip(factors, 1:length(factors))
             is = inds(i)
             hyi = commoninds(is, bitsI)
@@ -37,6 +39,7 @@ struct BFMatrixMPO
             indsposi = map(x->findfirst(is, x), hyi)
             indsposj = map(x->findfirst(is, x), hyj)
             cutinds_pos = Tuple(sort(vcat(indsposi, indsposj)))
+            push!(block_index_map, noncommoninds(is, is[[cutinds_pos...]]))
             
             push!(sliced_index_map, cutinds_pos)
             sliced_factor = eachslice(array(i), dims=cutinds_pos)
@@ -47,7 +50,7 @@ struct BFMatrixMPO
         iMPOinds, jMPOinds, hyperindsi, hyperindsj, 
         bitsI, bitsJ, 
         ranks, 
-        hyperind_sliced_factors, sliced_index_map)
+        hyperind_sliced_factors, sliced_index_map, block_index_map)
     end
 end
 
