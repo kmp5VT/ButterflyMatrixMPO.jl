@@ -7,6 +7,8 @@
 
 module ButterFlyMatrixMPO
     using ITensors, ITensorCPD
+    using LinearAlgebra
 
     include("BFMatrixMPO.jl")
+    include("ALS.jl")
 end
