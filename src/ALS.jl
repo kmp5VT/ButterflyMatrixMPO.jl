@@ -17,6 +17,10 @@ function least_squares_solve(BMPO, factor, M)
         MTtKRP = nothing
         gram_right = nothing
         gram_left = nothing
+        iindsPrev = nothing
+        jindsPrev = nothing
+        RHS_KRP = 1
+        LHS_KRP = 1
         for j in 1:prod(off_block_indices)
             bits_for_gram = ButterFlyMatrixMPO.to_tensor_element(j, off_block_indices) .+ 1
 
@@ -27,26 +31,30 @@ function least_squares_solve(BMPO, factor, M)
             ## That way we don't have to recall array function and index search [].
             Target_Block = itensor(array(MIT)[:,iinds..., :, jinds...], i_nohyp, j_nohyp)
             
-            RHS_KRP = 1
-            if factor != 4
+            if factor != 4 && jinds != jindsPrev
                 RHS_KRP = contract([itensor(BMPO.hyperind_sliced_factors[x][ map_bit_vals_to_list_position(BMPO, x, label_to_bit)], BMPO.block_index_map[x])
                 for x in factor+1:BMPO.levels + 1];)
                 gr = RHS_KRP * dag(prime(RHS_KRP, tags=tags(BMPO.ranks[factor])))
                 gram_right = isnothing(gram_right) ? gr : gram_right + gr
+                jindsPrev = jinds
             end
 
-            LHS_KRP = 1
-            if factor != 1
+            if factor != 1 && iinds != iindsPrev
                 LHS_KRP = contract([itensor(BMPO.hyperind_sliced_factors[x][map_bit_vals_to_list_position(BMPO, x, label_to_bit)], BMPO.block_index_map[x]) for x in 1:factor-1])
                 gr = LHS_KRP * dag(prime(LHS_KRP, tags=tags(BMPO.ranks[factor - 1])))
                 gram_left = isnothing(gram_left) ? gr : gram_left + gr
+                iindsPrev = iinds
             end
             MTtKRP = isnothing(MTtKRP) ? 
                     dag(LHS_KRP) * Target_Block * dag(RHS_KRP) : 
                     MTtKRP + dag(LHS_KRP) * Target_Block * dag(RHS_KRP)
         end
+        # return MTtKRP, gram_left, gram_right
         label_to_bit = Dict(bits_on_factor .=> bits_for_solve)
-        Sfsliced[map_bit_vals_to_list_position(BMPO, factor, label_to_bit)] .= solve_ls_problem(MTtKRP, gram_left, gram_right)
+        sol = solve_ls_problem(MTtKRP, gram_left, gram_right)
+        ## TODO this is broken right now for mode 3 because the modes are ordered in the wrong way 
+        ## in my example.
+        Sfsliced[map_bit_vals_to_list_position(BMPO, factor, label_to_bit)] .= factor == 3 ? permutedims(sol, (2,1)) : sol
     end
     return Sf
 end
@@ -72,9 +80,6 @@ function solve_ls_problem(MTtKRP, gram_left, ::Nothing)
 end
 
 function solve_ls_problem(MTtKRP, gram_left, gram_right)
-    @show inds(MTtKRP)
-    @show inds(gram_left)
-    @show inds(gram_right)
     tmp = array(gram_right) \ (array(gram_left) \ array(MTtKRP))'
-    return tmp
+    return tmp'
 end
