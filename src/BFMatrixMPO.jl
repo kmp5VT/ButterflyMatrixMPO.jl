@@ -84,7 +84,7 @@ function IndexSetFromLevels(n, levels)
     return iinds, jinds, hyperindsi, hyperindsj
 end
 
-function RandomButteflyMatrixMPO(M::AbstractArray)
+function RandomButteflyMatrixMPO(M::AbstractArray, ranks=nothing)
     @assert ndims(M) == 2
     i,j = size(M)
     @assert i==j
@@ -133,8 +133,13 @@ Base.length(bmpo::BFMatrixMPO) = length(bmpo.factors)
 
 function reconstruct_butterfly(BM::BFMatrixMPO)
     FuseMPO = ITensorCPD.had_contract(BM[1], BM[2], BM.hyperindsi[1]..., BM.hyperindsj[1]...)
+    lampos = BM.lambda_pos[1]
+    left = lampos > (BM.levels+1 ÷ 2)
+    lambda = ITensor(BM.lambda, ind(BM[lampos], left ? 1 : 2), inds(BM[lampos])[[BM.sliced_index_map[lampos]...]]...)
+    scaled = ITensorCPD.had_contract(BM[lampos], lambda, inds(lambda)...)
     for i in 3:length(BM)
-        FuseMPO = ITensorCPD.had_contract(FuseMPO, BM[i], BM.hyperindsi[i-1]..., BM.hyperindsj[i-1]...)
+        ten = (i == lampos ? scaled : BM[i])
+        FuseMPO = ITensorCPD.had_contract(FuseMPO, ten, BM.hyperindsi[i-1]..., BM.hyperindsj[i-1]...)
     end
     return FuseMPO
 end
