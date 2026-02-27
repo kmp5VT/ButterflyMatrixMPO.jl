@@ -91,7 +91,7 @@ function solve_ls_problem(MTtKRP, gram_left, ::Nothing; chol = true)
     end
 end
 
-function solve_ls_problem(MTtKRP, gram_left, gram_right)
-    tmp = array(gram_right) \ (array(gram_left) \ array(MTtKRP))'
-    return tmp'
+function solve_ls_problem(MTtKRP, gram_left, gram_right; chol = true)
+    # tmp = pinv(array(gram_left)) * array(MTtKRP) * pinv(array(gram_right))
+    return (array(gram_right) \ (array(gram_left) \ array(MTtKRP))')'
 end
