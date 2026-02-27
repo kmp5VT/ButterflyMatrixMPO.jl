@@ -25,6 +25,9 @@ struct BFMatrixMPO
     sliced_index_map
     block_index_map
 
+    lambda_pos
+    lambda
+
     function BFMatrixMPO(factors, levels, iMPOinds, jMPOinds, hyperindsi, hyperindsj, ranks)
         bitsI = iMPOinds[2:end]
         bitsJ = jMPOinds[end-1:-1:1]
@@ -46,11 +49,17 @@ struct BFMatrixMPO
             push!(hyperind_sliced_factors, sliced_factor)
         end
 
+        lambda = ones(eltype(factors[1]), 2^(levels+1))
         return new(factors, levels, 
         iMPOinds, jMPOinds, hyperindsi, hyperindsj, 
         bitsI, bitsJ, 
-        ranks, 
-        hyperind_sliced_factors, sliced_index_map, block_index_map)
+        ranks,
+        hyperind_sliced_factors, 
+        sliced_index_map, 
+        block_index_map,
+        [1,], 
+        lambda
+        )
     end
 end
 
@@ -86,19 +95,26 @@ function RandomButteflyMatrixMPO(M::AbstractArray)
     ranks = Index.([2 for i in 1:num_levels], ["r$(i)" for i in 1:num_levels])
     factors = Vector{ITensor}(undef, num_levels + 1)
     for i in 1:num_levels + 1
-        rks = i == 1 ? ranks[1] : i == num_levels + 1 ? ranks[num_levels] : (ranks[i], ranks[i-1])
+        rks = i == 1 ? ranks[1] : i == num_levels + 1 ? ranks[num_levels] : (ranks[i-1], ranks[i],)
         f = random_itensor(elt, rks, unique([iinds[i], hyperindsi[i]...]), unique([jinds[i], hyperindsj[i]...]))
-
-        ## Do we need to normalize, I am not sure.
-        # indsposi = [findfirst(x -> x == i, inds(f)) for i in hyperindsi[i]]
-        # indsposj = [findfirst(x -> x == j, inds(f)) for j in hyperindsj[i]]
-        # slicef = eachslice(array(f), dims=(indsposi..., indsposj...))
-
-        # f, lambda = ITensorCPD.row_norm(itensor(slicef, ))
-
         factors[i] = f
     end
     BMPO = BFMatrixMPO(factors, num_levels, iinds, jinds, hyperindsi, hyperindsj, ranks)
+
+    ## Normalize the rows before the mid point
+    for sliced_factors in BMPO.hyperind_sliced_factors[1:num_levels÷2+1]
+        for slice in sliced_factors
+            normalize!.(eachrow(slice))
+        end
+    end
+    ## Normalize the columns after the midpoint. This way normalization always
+    ## points inwards.
+    for sliced_factor in BMPO.hyperind_sliced_factors[num_levels÷ 2 + 2:end]
+        for slice in sliced_factor
+            normalize!.(eachcol(slice))
+        end
+    end
+
     return BMPO
 end
 
