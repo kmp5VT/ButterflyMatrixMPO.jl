@@ -1,12 +1,16 @@
 function least_squares_solve(BMPO, factor, M)
-    elt = eltype(BMPO)
     bits_on_factor = inds(BMPO[factor])[[BMPO.sliced_index_map[factor]...]]
-    tensor_block_indices = dim.(bits_on_factor)
     bits_off_factor = noncommoninds(bits_on_factor, vcat(BMPO.iMPOinds[2:end], BMPO.jMPOinds[1:end-1]))
+    
+
+    tensor_block_indices = dim.(bits_on_factor)
     off_block_indices = Tuple(dim.(bits_off_factor))
+
     i_nohyp = BMPO.iMPOinds[1]
     j_nohyp = BMPO.jMPOinds[end]
+    
     MIT = itensor(M, inds(BMPO))
+    
     Sf = similar(BMPO[factor])
     Sfsliced = eachslice(array(Sf), dims=BMPO.sliced_index_map[factor])
 
@@ -31,7 +35,7 @@ function least_squares_solve(BMPO, factor, M)
             ## That way we don't have to recall array function and index search [].
             Target_Block = itensor(array(MIT)[:,iinds..., :, jinds...], i_nohyp, j_nohyp)
             
-            if factor != 4 && jinds != jindsPrev
+            if factor != length(BMPO) && jinds != jindsPrev
                 RHS_KRP = contract([itensor(BMPO.hyperind_sliced_factors[x][ map_bit_vals_to_list_position(BMPO, x, label_to_bit)], BMPO.block_index_map[x])
                 for x in factor+1:BMPO.levels + 1];)
                 gr = RHS_KRP * dag(prime(RHS_KRP, tags=tags(BMPO.ranks[factor])))
@@ -45,16 +49,15 @@ function least_squares_solve(BMPO, factor, M)
                 gram_left = isnothing(gram_left) ? gr : gram_left + gr
                 iindsPrev = iinds
             end
+
             MTtKRP = isnothing(MTtKRP) ? 
                     dag(LHS_KRP) * Target_Block * dag(RHS_KRP) : 
                     MTtKRP + dag(LHS_KRP) * Target_Block * dag(RHS_KRP)
         end
-        # return MTtKRP, gram_left, gram_right
         label_to_bit = Dict(bits_on_factor .=> bits_for_solve)
-        sol = solve_ls_problem(MTtKRP, gram_left, gram_right)
-        ## TODO this is broken right now for mode 3 because the modes are ordered in the wrong way 
-        ## in my example.
-        Sfsliced[map_bit_vals_to_list_position(BMPO, factor, label_to_bit)] .= factor == 3 ? permutedims(sol, (2,1)) : sol
+        chol = false
+        sol = solve_ls_problem(MTtKRP, gram_left, gram_right; chol)
+        Sfsliced[map_bit_vals_to_list_position(BMPO, factor, label_to_bit)] .= sol
     end
     return Sf
 end
@@ -71,12 +74,21 @@ function map_bit_vals_to_list_position(BMPO, factor, label_bit_map)
     # , noncommoninds(inds(BMPO[factor]), block_tensor_indlist)
 end
 
-function solve_ls_problem(MTtKRP, ::Nothing, gram_right)
-    return (cholesky(array(gram_right), RowMaximum(), check=false, tol=1e-6) \ array(MTtKRP)')'
+function solve_ls_problem(MTtKRP, ::Nothing, gram_right; chol = true)
+    if chol
+        return (cholesky(array(gram_right), RowMaximum(), check=false, tol=1e-6)' \ array(MTtKRP)')'
+    else
+        return (permutedims(array((gram_right)), (2,1)) \ permutedims(array(MTtKRP), (2,1)))
+        # return permutedims((array(MTtKRP)' \ array(gram_right)), (2,1))
+    end
 end
 
-function solve_ls_problem(MTtKRP, gram_left, ::Nothing)
-    return (cholesky(array(gram_left), RowMaximum(), check=false, tol=1e-6) \ array(MTtKRP))
+function solve_ls_problem(MTtKRP, gram_left, ::Nothing; chol = true)
+    if chol
+        return (cholesky(array(gram_left), RowMaximum(), check=false, tol=1e-6) \ array(MTtKRP))
+    else
+        return (array(gram_left) \ array(MTtKRP))
+    end
 end
 
 function solve_ls_problem(MTtKRP, gram_left, gram_right)
