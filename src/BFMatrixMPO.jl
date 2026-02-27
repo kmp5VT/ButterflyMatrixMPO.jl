@@ -132,12 +132,16 @@ Base.eltype(bmpo::BFMatrixMPO) = eltype(getproperty(bmpo, :factors)[1].tensor)
 Base.length(bmpo::BFMatrixMPO) = length(bmpo.factors)
 
 function reconstruct_butterfly(BM::BFMatrixMPO)
-    FuseMPO = ITensorCPD.had_contract(BM[1], BM[2], BM.hyperindsi[1]..., BM.hyperindsj[1]...)
+    ## Deal with lambda first 
     lampos = BM.lambda_pos[1]
-    left = lampos > (BM.levels+1 ÷ 2)
-    lambda = ITensor(BM.lambda, ind(BM[lampos], left ? 1 : 2), inds(BM[lampos])[[BM.sliced_index_map[lampos]...]]...)
+    left = lampos ≤ ((BM.levels + 1) ÷ 2)
+    lam_inds = [ind(BM[lampos], left ? 1 : 2), inds(BM[lampos])[[BM.sliced_index_map[lampos]...]]...]
+    lam_dim = prod(dims(lam_inds))
+    lambda = ITensor(BM.lambda[1:lam_dim], lam_inds)
     scaled = ITensorCPD.had_contract(BM[lampos], lambda, inds(lambda)...)
-    for i in 3:length(BM)
+    FuseMPO = lampos==1 ? scaled : BM[1]
+    # FuseMPO = ITensorCPD.had_contract(BM[1], BM[2], BM.hyperindsi[1]..., BM.hyperindsj[1]...)
+    for i in 2:length(BM)
         ten = (i == lampos ? scaled : BM[i])
         FuseMPO = ITensorCPD.had_contract(FuseMPO, ten, BM.hyperindsi[i-1]..., BM.hyperindsj[i-1]...)
     end
@@ -161,4 +165,19 @@ function to_tensor_element(v::Int, range::Tuple)
     end
     idx[end] = (v-1)
     return idx
+end
+
+function normalize_bfm_factor!(BMPO, factor)
+    ## Normalize the 3rd factor to expected normalization.
+    m = 1
+    fun = factor > (BMPO.levels ÷ 2 + 1) ? eachcol : eachrow
+    for slice in BMPO.hyperind_sliced_factors[factor]
+        for j in fun(slice)
+            l = norm(j)
+            j ./= l
+            BMPO.lambda[m] = l
+            m += 1
+        end
+    end
+    BMPO.lambda_pos .= factor
 end
