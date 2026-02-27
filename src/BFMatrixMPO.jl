@@ -92,7 +92,11 @@ function RandomButteflyMatrixMPO(M::AbstractArray)
     elt = eltype(M)
 
     iinds, jinds, hyperindsi, hyperindsj = IndexSetFromLevels(i, num_levels)
-    ranks = Index.([2 for i in 1:num_levels], ["r$(i)" for i in 1:num_levels])
+    if isnothing(rank)
+        ranks = Index.([2 for _ in 1:num_levels], ["r$(i)" for i in 1:num_levels])
+    elseif ranks isa Number
+        ranks = Index.([ranks for _ in 1:num_levels], ["r$(i)" for i in 1:num_levels])
+    end
     factors = Vector{ITensor}(undef, num_levels + 1)
     for i in 1:num_levels + 1
         rks = i == 1 ? ranks[1] : i == num_levels + 1 ? ranks[num_levels] : (ranks[i-1], ranks[i],)
