@@ -49,7 +49,7 @@ struct BFMatrixMPO
             push!(hyperind_sliced_factors, sliced_factor)
         end
 
-        lambda = ones(eltype(factors[1]), 2^(levels+1))
+        lambda = [ones(eltype(factors[1]), dim(ranks[1]) * 2^levels),]
         return new(factors, levels, 
         iMPOinds, jMPOinds, hyperindsi, hyperindsj, 
         bitsI, bitsJ, 
@@ -106,16 +106,9 @@ function RandomButteflyMatrixMPO(M::AbstractArray, ranks=nothing)
     BMPO = BFMatrixMPO(factors, num_levels, iinds, jinds, hyperindsi, hyperindsj, ranks)
 
     ## Normalize the rows before the mid point
-    for sliced_factors in BMPO.hyperind_sliced_factors[1:num_levels÷2+1]
+    for sliced_factors in BMPO.hyperind_sliced_factors
         for slice in sliced_factors
             normalize!.(eachrow(slice))
-        end
-    end
-    ## Normalize the columns after the midpoint. This way normalization always
-    ## points inwards.
-    for sliced_factor in BMPO.hyperind_sliced_factors[num_levels÷ 2 + 2:end]
-        for slice in sliced_factor
-            normalize!.(eachcol(slice))
         end
     end
 
@@ -134,11 +127,10 @@ Base.length(bmpo::BFMatrixMPO) = length(bmpo.factors)
 function reconstruct_butterfly(BM::BFMatrixMPO)
     ## Deal with lambda first 
     lampos = BM.lambda_pos[1]
-    left = lampos ≤ ((BM.levels + 1) ÷ 2)
-    lam_inds = [ind(BM[lampos], left ? 1 : 2), inds(BM[lampos])[[BM.sliced_index_map[lampos]...]]...]
+    lam_inds = [ind(BM[lampos], 1), inds(BM[lampos])[[BM.sliced_index_map[lampos]...]]...]
     lam_dim = prod(dims(lam_inds))
-    lambda = ITensor(BM.lambda[1:lam_dim], lam_inds)
-    scaled = ITensorCPD.had_contract(BM[lampos], lambda, inds(lambda)...)
+    lambda = ITensor(BM.lambda[1][1:lam_dim], lam_inds)
+    scaled = ITensorCPD.had_contract(BM[lampos], lambda, lam_inds...)
     FuseMPO = lampos==1 ? scaled : BM[1]
     # FuseMPO = ITensorCPD.had_contract(BM[1], BM[2], BM.hyperindsi[1]..., BM.hyperindsj[1]...)
     for i in 2:length(BM)
@@ -167,17 +159,20 @@ function to_tensor_element(v::Int, range::Tuple)
     return idx
 end
 
-function normalize_bfm_factor!(BMPO, factor)
+function normalize_bfm_factor!(BMPO::BFMatrixMPO, factor)
     ## Normalize the 3rd factor to expected normalization.
     m = 1
-    fun = factor > (BMPO.levels ÷ 2 + 1) ? eachcol : eachrow
+    fun = eachrow
+    lam = Vector{eltype(BMPO)}()
     for slice in BMPO.hyperind_sliced_factors[factor]
         for j in fun(slice)
             l = norm(j)
             j ./= l
-            BMPO.lambda[m] = l
+            push!(lam, l)
             m += 1
         end
     end
+    push!(BMPO.lambda, lam)
+    popfirst!(BMPO.lambda)
     BMPO.lambda_pos .= factor
 end

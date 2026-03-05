@@ -13,7 +13,13 @@ function least_squares_solve(BMPO, factor, M)
     
     Sf = similar(BMPO[factor])
     Sfsliced = eachslice(array(Sf), dims=BMPO.sliced_index_map[factor])
+    norm_fun = eachrow
+    lam = Vector{eltype(BMPO)}()
 
+    # @show bits_on_factor 
+    # @show bits_off_factor
+
+    m = 1
     for i in 1:length(BMPO.hyperind_sliced_factors[factor])
         bits_for_solve = ButterFlyMatrixMPO.to_tensor_element(i, tensor_block_indices) .+ 1
 
@@ -57,9 +63,17 @@ function least_squares_solve(BMPO, factor, M)
         label_to_bit = Dict(bits_on_factor .=> bits_for_solve)
         chol = false
         sol = solve_ls_problem(MTtKRP, gram_left, gram_right; chol)
+
+        for j in norm_fun(sol)
+            l = norm(j)
+            j ./= l
+            push!(lam, l)
+            m += 1
+        end 
+
         Sfsliced[map_bit_vals_to_list_position(BMPO, factor, label_to_bit)] .= sol
     end
-    return Sf
+    return Sf, lam
 end
 
 function map_bit_vals_to_list_position(BMPO, factor, label_bit_map)
@@ -75,23 +89,13 @@ function map_bit_vals_to_list_position(BMPO, factor, label_bit_map)
 end
 
 function solve_ls_problem(MTtKRP, ::Nothing, gram_right; chol = true)
-    if chol
-        return (cholesky(array(gram_right), RowMaximum(), check=false, tol=1e-6)' \ array(MTtKRP)')'
-    else
-        return (permutedims(array((gram_right)), (2,1)) \ permutedims(array(MTtKRP), (2,1)))
-        # return permutedims((array(MTtKRP)' \ array(gram_right)), (2,1))
-    end
+        return (Symmetric(array(gram_right)) \ permutedims(array(MTtKRP), (2,1)))
 end
 
 function solve_ls_problem(MTtKRP, gram_left, ::Nothing; chol = true)
-    if chol
-        return (cholesky(array(gram_left), RowMaximum(), check=false, tol=1e-6) \ array(MTtKRP))
-    else
-        return (array(gram_left) \ array(MTtKRP))
-    end
+        return (Symmetric(array(gram_left)) \ array(MTtKRP))
 end
 
 function solve_ls_problem(MTtKRP, gram_left, gram_right; chol = true)
-    # tmp = pinv(array(gram_left)) * array(MTtKRP) * pinv(array(gram_right))
-    return (array(gram_right) \ (array(gram_left) \ array(MTtKRP))')'
+    return array(itensor(pinv(array(gram_left)), inds(gram_left)) * (MTtKRP * itensor(pinv(array(gram_right)), inds(gram_right))))
 end
